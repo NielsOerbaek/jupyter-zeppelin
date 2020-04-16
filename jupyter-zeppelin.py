@@ -1,12 +1,11 @@
 import os, sys
 import re
 import csv
-import json
+import simplejson as json
 import html
 import nbformat
 import codecs
-from aws.s3 import S3
-from StringIO import StringIO
+from io import StringIO
 
 MD = re.compile(r'%md\s')
 SQL = re.compile(r'%sql\s')
@@ -14,18 +13,12 @@ UNKNOWN_MAGIC = re.compile(r'%\w+\s')
 HTML = re.compile(r'%html\s')
 
 def read_io(path):
-    """Reads the contents of a local or S3 path into a StringIO.
+    """Reads the contents of a local path into a StringIO.
     """
     note = StringIO()
-    if path.startswith("s3://"):
-        s3 = S3(env='prod')
-        for line in s3.read(path):
+    with open(path) as local:
+        for line in local.readlines():
             note.write(line)
-            note.write("\n")
-    else:
-        with open(path) as local:
-            for line in local.readlines():
-                note.write(line)
 
     note.seek(0)
 
@@ -151,17 +144,8 @@ def write_notebook(notebook_name, notebook, path=None):
 
     If path is None, the output path will be created the notebook name in the current directory.
     """
-    filename = path
-    if not filename:
-        filename = notebook_name + '.ipynb'
-        if os.path.exists(filename):
-            for i in range(1, 1000):
-                filename = notebook_name + ' (' + str(i) + ').ipynb'
-                if not os.path.exists(filename):
-                    break
-                if i == 1000:
-                    raise RuntimeError('Cannot write %s: versions 1-1000 already exist.' % (notebook_name,))
-
+    filename = notebook_name + '.ipynb'
+    
     with codecs.open(filename, 'w', encoding='UTF-8') as io:
         nbformat.write(notebook, io)
 
@@ -174,12 +158,15 @@ if __name__ == '__main__':
     target_path = None
     if num_args == 2:
         zeppelin_note_path = sys.argv[1]
-    elif num_args == 3:
-        target_path = sys.argv[2]
 
     if not zeppelin_note_path:
+        print("EXITING - No Zeppelin note path given")
         exit()
-
+        
     name, content = convert_json(read_io(zeppelin_note_path))
-    write_notebook(name, content, target_path)
+    print("CONVERTING:", zeppelin_note_path)
+    name = zeppelin_note_path.split(".json")[0] #Hack to use the original path
+    filename = write_notebook(name, content, target_path)
+    print("OUTPUT:", filename)
+    print()
 
